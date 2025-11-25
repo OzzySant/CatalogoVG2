@@ -54,12 +54,22 @@ export interface CatalogSettings {
   cardIdTextColor: string;
   cardDescTextColor: string;
 
+  // Typography & Alignment (New)
+  cardIdFontSize: number;
+  cardIdAlignHoriz: 'left' | 'center' | 'right';
+  cardIdAlignVert: 'start' | 'center' | 'end'; // Flex-box values
+  
+  cardDescFontSize: number;
+  cardDescAlignHoriz: 'left' | 'center' | 'right';
+  cardDescAlignVert: 'start' | 'center' | 'end';
+
   // Watermark
   watermarkEnabled: boolean;
   watermarkType: 'logo' | 'text';
   watermarkText?: string;
   watermarkLogoData?: string | null;
   watermarkOpacity: number;
+  watermarkSizeMm: number; // Size in mm
 }
 
 export const DEFAULT_SETTINGS: CatalogSettings = {
@@ -88,10 +98,19 @@ export const DEFAULT_SETTINGS: CatalogSettings = {
   cardIdTextColor: '#ffffff',
   cardDescTextColor: '#1f2937',
 
+  // Typography Defaults
+  cardIdFontSize: 14,
+  cardIdAlignHoriz: 'center',
+  cardIdAlignVert: 'center',
+  cardDescFontSize: 10,
+  cardDescAlignHoriz: 'left',
+  cardDescAlignVert: 'center',
+
   watermarkEnabled: false,
   watermarkType: 'logo',
   watermarkText: 'CONFIDENCIAL',
-  watermarkOpacity: 0.1
+  watermarkOpacity: 0.1,
+  watermarkSizeMm: 40 // Default 40mm
 };
 
 export interface ExportOptions {

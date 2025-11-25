@@ -28,7 +28,9 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
   const ghostRef = useRef<HTMLDivElement>(null); // For invisible rendering
 
   const itemsPerPage = settings.gridCols * settings.gridRows;
-  const emptySlots = Math.max(0, itemsPerPage - products.length);
+  
+  // Conversion: 1mm approx 3.78px
+  const mmToPx = (mm: number) => mm * 3.7795;
 
   // --- WATERMARK GENERATION ---
   const generateTextWatermark = (text: string) => {
@@ -47,9 +49,12 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
       backgroundImage: settings.watermarkType === 'text' 
           ? generateTextWatermark(settings.watermarkText || 'CATÁLOGO') 
           : `url(${settings.watermarkLogoData || settings.headerLogoData})`,
-      backgroundRepeat: settings.watermarkType === 'text' ? 'repeat' : 'repeat',
+      backgroundRepeat: 'repeat', // Always repeat to fill background
       backgroundPosition: 'center',
-      backgroundSize: settings.watermarkType === 'text' ? '300px 300px' : '150px',
+      // Use user setting converted to px, defaulting to 150px (approx 40mm)
+      backgroundSize: settings.watermarkType === 'text' 
+          ? '300px 300px' 
+          : `${mmToPx(settings.watermarkSizeMm || 40)}px`, 
       opacity: settings.watermarkOpacity,
       pointerEvents: 'none',
       position: 'absolute', inset: 0, zIndex: 0
@@ -66,12 +71,18 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
 
   const getIdStyle = () => ({
       backgroundColor: settings.cardIdBg,
-      color: settings.cardIdTextColor
+      color: settings.cardIdTextColor,
+      fontSize: `${settings.cardIdFontSize}px`,
+      justifyContent: settings.cardIdAlignHoriz,
+      alignItems: settings.cardIdAlignVert
   });
 
   const getDescStyle = () => ({
       backgroundColor: settings.cardDescBg,
-      color: settings.cardDescTextColor
+      color: settings.cardDescTextColor,
+      fontSize: `${settings.cardDescFontSize}px`,
+      justifyContent: settings.cardDescAlignHoriz,
+      alignItems: settings.cardDescAlignVert
   });
 
   // --- EXPORT LOGIC (GHOST RENDER) ---
@@ -99,57 +110,36 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
               });
           }
           
-          // Unique & Sort
           pagesToExport = [...new Set(pagesToExport)].sort((a,b) => a-b);
           if(pagesToExport.length === 0) throw new Error("Nenhuma página selecionada.");
 
-          // 2. Fetch ALL data if needed (for multipage)
           let allProducts = products;
           if (pagesToExport.length > 1 || (pagesToExport[0] !== currentPage)) {
               allProducts = await fetchAllProducts();
           }
 
-          // 3. Setup PDF
           const pdf = new jsPDF('p', 'mm', 'a4');
           
-          // 4. Loop and Render
           for (let i = 0; i < pagesToExport.length; i++) {
               const pNum = pagesToExport[i];
               setExportProgress(Math.round(((i) / pagesToExport.length) * 100));
 
-              // Slice products for this page
               const start = (pNum - 1) * itemsPerPage;
               const end = start + itemsPerPage;
               const pageProducts = allProducts.slice(start, end);
 
-              // RENDER TO GHOST DOM
-              // We use a helper function/component logic here, but for simplicity we reactively render
-              // inside the hidden div by passing these props to a "PageRenderer" inside the ghost div
-              // Actually, to keep it simple in this file, we will manually update the Ghost DOM content 
-              // via React State just for the render cycle, or force a re-render.
-              // BETTER APPROACH: The GhostRef contains a separate <PageContent> component that we pass props to.
-              // But since we can't easily invoke a React render sync, we will iterate:
-              
-              // Since React state updates are async, we can't loop efficiently.
-              // Fallback: We will use the current 'products' prop for 'Current Page' export (fast).
-              // For 'All Pages', we might block the UI.
-              // To fix "Layout Bug", the ghost element is key.
-              
-              // *Hack for "All Pages" in client-side React without complex architecture*:
-              // We will fetch images and build HTML string? No, styles are complex.
-              // We will render the <PageTemplate> into the GhostDiv using a temporary root?
-              // Let's simplify: Only support "Current Page" perfectly for now, or...
-              // wait, the requirement is "Exportar por pagina atual, total".
-              // We will simulate it by changing the `displayedGhostData` state and waiting for a tick.
-              
               setGhostPageData({ products: pageProducts, pageNum: pNum });
-              await new Promise(r => setTimeout(r, 100)); // Wait for React Render
+              await new Promise(r => setTimeout(r, 200)); // Wait for React Render
 
-              const canvas = await html2canvas(ghostRef.current.querySelector('.a4-page') as HTMLElement, {
-                  scale: exportOpts.quality === 1 ? 3 : 2, // High res
+              const element = ghostRef.current.querySelector('.a4-page') as HTMLElement;
+              
+              const canvas = await html2canvas(element, {
+                  scale: exportOpts.quality === 1 ? 3 : 2,
                   useCORS: true,
                   logging: false,
-                  allowTaint: true
+                  allowTaint: true,
+                  width: element.offsetWidth, // Enforce dimensions
+                  height: element.offsetHeight
               });
 
               if (exportOpts.format === 'png') {
@@ -180,18 +170,18 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
       }
   };
 
-  // State for Ghost Renderer
   const [ghostPageData, setGhostPageData] = useState<{products: Product[], pageNum: number}>({ products: [], pageNum: 1 });
 
-
   // --- RENDER HELPERS ---
-  // Reusable Page Content Component
   const PageContent = ({ items, pNum }: { items: Product[], pNum: number }) => {
       const localEmptySlots = Math.max(0, itemsPerPage - items.length);
       
       return (
-        <div className="a4-page text-gray-900 relative flex flex-col h-full box-border"
+        // NOTE: Explicit dimensions on this container are CRITICAL to prevent flex compression issues
+        <div className="a4-page text-gray-900 relative flex flex-col box-border shrink-0"
              style={{
+                width: '210mm',
+                height: '297mm',
                 paddingTop: `${settings.pageMarginTop}mm`,
                 paddingBottom: `${settings.pageMarginBottom}mm`,
                 paddingLeft: `${settings.pageMarginLeft}mm`,
@@ -209,13 +199,14 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                 </div>
             </header>
 
-            {/* Grid */}
+            {/* Grid - Use CSS Grid with explicit row height calculation if needed, or flex-grow */}
             <div className="grid h-full content-start relative z-10"
                 style={{
                     gridTemplateColumns: `repeat(${settings.gridCols}, 1fr)`,
                     gridTemplateRows: `repeat(${settings.gridRows}, 1fr)`,
                     gap: `${settings.gridGap}mm`,
-                    height: 'calc(100% - 40mm)',
+                    // Important: Force grid to take remaining height exactly
+                    height: 'calc(100% - 40mm)', 
                 }}>
                 
                 {items.map(product => (
@@ -230,12 +221,12 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                         
                         <div className="flex min-h-[45px] items-stretch border-t" style={{ borderColor: settings.cardBorderColor }}>
                             {settings.showProductId && (
-                                <div className="flex items-center justify-center px-2 text-xs font-bold min-w-[60px]" style={getIdStyle()}>
+                                <div className="flex px-2 font-bold min-w-[60px]" style={getIdStyle()}>
                                     {product.id}
                                 </div>
                             )}
-                            <div className="flex-1 flex items-center p-2 text-[10px] leading-tight" style={getDescStyle()}>
-                                <span className="line-clamp-2">{product.description}</span>
+                            <div className="flex-1 flex p-2 leading-tight" style={getDescStyle()}>
+                                <span className="line-clamp-3 w-full">{product.description}</span>
                             </div>
                         </div>
                     </div>
@@ -260,29 +251,28 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
   return (
     <div className="flex flex-col h-full bg-gray-200 dark:bg-dark-bg relative overflow-hidden">
       
-      {/* Ghost Render Container (Invisible) - Fixed Size A4 */}
+      {/* Ghost Render Container */}
       <div className="absolute top-0 left-0 pointer-events-none opacity-0 overflow-hidden" style={{ width: '210mm', height: '297mm', zIndex: -100 }} ref={ghostRef}>
-          {/* We render the ghost content here based on state */}
           <PageContent items={ghostPageData.products} pNum={ghostPageData.pageNum} />
       </div>
 
       {/* Toolbar */}
       {!cleanMode && (
-        <div className="flex items-center justify-between p-3 bg-white dark:bg-dark-card border-b shadow-sm z-30">
+        <div className="flex items-center justify-between p-3 bg-white dark:bg-dark-card border-b shadow-sm z-30 shrink-0">
             <div className="flex items-center gap-3">
                 <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded p-1">
-                    <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1} className="p-1 hover:bg-gray-200 rounded disabled:opacity-30"><ChevronLeft size={20}/></button>
-                    <span className="px-3 text-sm font-medium min-w-[80px] text-center">{currentPage} / {totalPages}</span>
-                    <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages} className="p-1 hover:bg-gray-200 rounded disabled:opacity-30"><ChevronRight size={20}/></button>
+                    <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-30 dark:text-white"><ChevronLeft size={20}/></button>
+                    <span className="px-3 text-sm font-medium min-w-[80px] text-center dark:text-white">{currentPage} / {totalPages}</span>
+                    <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-30 dark:text-white"><ChevronRight size={20}/></button>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="p-2 hover:bg-gray-100 rounded"><ZoomOut size={18}/></button>
-                    <span className="text-xs font-medium w-10 text-center">{Math.round(zoom * 100)}%</span>
-                    <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-2 hover:bg-gray-100 rounded"><ZoomIn size={18}/></button>
+                    <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded dark:text-white"><ZoomOut size={18}/></button>
+                    <span className="text-xs font-medium w-10 text-center dark:text-white">{Math.round(zoom * 100)}%</span>
+                    <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded dark:text-white"><ZoomIn size={18}/></button>
                 </div>
             </div>
             <div className="flex gap-2">
-                <button onClick={() => setCleanMode(true)} className="p-2 hover:bg-gray-100 rounded" title="Modo Limpo"><EyeOff size={20}/></button>
+                <button onClick={() => setCleanMode(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded dark:text-white" title="Modo Limpo"><EyeOff size={20}/></button>
                 <button onClick={() => setShowExportModal(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium"><Download size={18}/> Exportar</button>
             </div>
         </div>
@@ -292,7 +282,7 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
 
       {/* Main Preview */}
       <div className="flex-1 overflow-auto p-8 flex justify-center items-start bg-gray-200 dark:bg-[#121212]">
-        <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="transition-transform duration-200 shadow-2xl">
+        <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="transition-transform duration-200 shadow-2xl shrink-0">
             <PageContent items={products} pNum={currentPage} />
         </div>
       </div>
@@ -300,7 +290,7 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
       {/* Export Modal */}
       {showExportModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl w-full max-w-md p-6">
+              <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl w-full max-w-md p-6 text-gray-800 dark:text-gray-100">
                   <h3 className="text-lg font-bold mb-4">Exportar Catálogo</h3>
                   
                   <div className="space-y-4">
@@ -315,7 +305,7 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                                   <input 
                                     type="text" 
                                     placeholder="Ex: 1-3, 5" 
-                                    className="border rounded p-1 text-sm w-32" 
+                                    className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600" 
                                     value={exportOpts.customRange} 
                                     onChange={e => setExportOpts(p => ({...p, customRange: e.target.value, range: 'custom'}))}
                                     disabled={exportOpts.range !== 'custom'}
@@ -326,7 +316,7 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
 
                       <div>
                           <label className="block text-sm font-medium mb-1">Formato</label>
-                          <select className="w-full border rounded p-2" value={exportOpts.format} onChange={(e) => setExportOpts(p => ({...p, format: e.target.value as any}))}>
+                          <select className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" value={exportOpts.format} onChange={(e) => setExportOpts(p => ({...p, format: e.target.value as any}))}>
                               <option value="pdf">PDF (Arquivo Único)</option>
                               <option value="png">PNG (Imagens Separadas)</option>
                           </select>
@@ -335,13 +325,13 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                       <div>
                           <label className="block text-sm font-medium mb-1">Qualidade / Compressão ({Math.round(exportOpts.quality * 100)}%)</label>
                           <input type="range" min="0.5" max="1" step="0.1" value={exportOpts.quality} onChange={(e) => setExportOpts(p => ({...p, quality: Number(e.target.value)}))} className="w-full" />
-                          <p className="text-xs text-gray-500">Menor qualidade = Arquivo menor.</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Menor qualidade = Arquivo menor.</p>
                       </div>
                   </div>
 
                   {isExporting && (
                       <div className="mt-4">
-                          <div className="h-2 w-full bg-gray-200 rounded overflow-hidden">
+                          <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded overflow-hidden">
                               <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${exportProgress}%` }}></div>
                           </div>
                           <p className="text-center text-xs mt-1">Processando página...</p>
@@ -349,7 +339,7 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                   )}
 
                   <div className="flex justify-end gap-3 mt-6">
-                      <button onClick={() => setShowExportModal(false)} disabled={isExporting} className="px-4 py-2 rounded text-gray-600 hover:bg-gray-100">Cancelar</button>
+                      <button onClick={() => setShowExportModal(false)} disabled={isExporting} className="px-4 py-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Cancelar</button>
                       <button onClick={performExport} disabled={isExporting} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2">
                           {isExporting ? <span className="animate-spin">⏳</span> : <Check size={16} />} Iniciar Exportação
                       </button>

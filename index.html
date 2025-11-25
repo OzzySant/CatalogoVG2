@@ -52,7 +52,7 @@
         background: #64748b;
       }
       
-      /* A4 Simulation Base */
+      /* A4 Simulation Base - Ensuring standard A4 Dimensions are default */
       .a4-page {
         width: 210mm;
         height: 297mm;
@@ -63,6 +63,7 @@
         position: relative;
         transform-origin: top center;
         transition: transform 0.2s ease;
+        flex-shrink: 0; /* Prevents flexbox compression */
       }
     </style>
   <script type="importmap">
