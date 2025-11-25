@@ -1,0 +1,5 @@
+{
+  "name": "Gerenciador de Catálogo V2",
+  "description": "A modern React-based catalog manager for managing products, categories, and generating PDF catalogs with customizable layouts.",
+  "requestFramePermissions": []
+}
