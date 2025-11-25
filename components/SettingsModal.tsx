@@ -1,13 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
 import { CatalogSettings } from '../types';
-import { X, Save, FileImage, Upload, Download, Trash2, FolderInput, Palette, Layout, Database, Type, AlignCenter, AlignLeft, AlignRight, ArrowUpToLine, ArrowDownToLine, MoveVertical } from 'lucide-react';
+import { X, Save, FileImage, Upload, Download, Trash2, FolderInput, Palette, Layout, Database, AlignLeft, AlignCenter, AlignRight, AlignJustify, ArrowUpToLine, ArrowDownToLine, MoveVertical, RefreshCw, Type } from 'lucide-react';
 import { cleanupOrphanedImages } from '../services/api';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentSettings: CatalogSettings;
-  onSave: (settings: CatalogSettings) => void;
+  onSave: (settings: CatalogSettings) => void | Promise<void>;
   onImportXLSX: () => void;
   onExportXLSX: () => void;
   onBatchImages: () => void;
@@ -27,6 +28,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [formData, setFormData] = useState<CatalogSettings>(currentSettings);
   const [activeTab, setActiveTab] = useState<Tab>('layout');
   const [cleaning, setCleaning] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setFormData(currentSettings);
@@ -53,6 +55,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       }
   };
 
+  const handleSaveWrapper = async () => {
+      setIsSaving(true);
+      try {
+          await Promise.resolve(onSave(formData));
+      } catch (error) {
+          console.error("Error saving settings", error);
+      } finally {
+          setIsSaving(false);
+      }
+  };
+
   const handleCleanup = async () => {
       if(!confirm("Atenção! Isso irá apagar permanentemente imagens não usadas. Continuar?")) return;
       setCleaning(true);
@@ -75,9 +88,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       </button>
   );
 
-  // Reusable Input Class for Dark/Light Mode
-  const inputClass = "w-full p-2 border rounded mt-1 text-sm bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none";
-  const selectClass = "w-full p-2 border rounded mt-1 text-sm bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none";
+  const AlignmentToolbar = ({ 
+      align, 
+      vertical, 
+      onAlignChange, 
+      onVertChange 
+  }: { 
+      align: string, 
+      vertical: string, 
+      onAlignChange: (v: any) => void, 
+      onVertChange: (v: any) => void 
+  }) => (
+      <div className="flex gap-2 items-center mt-1">
+          <div className="flex border dark:border-gray-600 rounded overflow-hidden bg-white dark:bg-gray-700">
+              <button type="button" onClick={() => onAlignChange('left')} className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-600 ${align === 'left' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-600 dark:text-gray-300'}`} title="Esquerda"><AlignLeft size={16}/></button>
+              <button type="button" onClick={() => onAlignChange('center')} className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-600 border-l dark:border-gray-600 border-r ${align === 'center' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-600 dark:text-gray-300'}`} title="Centro"><AlignCenter size={16}/></button>
+              <button type="button" onClick={() => onAlignChange('right')} className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-600 ${align === 'right' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-600 dark:text-gray-300'}`} title="Direita"><AlignRight size={16}/></button>
+          </div>
+          <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+          <div className="flex border dark:border-gray-600 rounded overflow-hidden bg-white dark:bg-gray-700">
+              <button type="button" onClick={() => onVertChange('start')} className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-600 ${vertical === 'start' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-600 dark:text-gray-300'}`} title="Topo"><ArrowUpToLine size={16}/></button>
+              <button type="button" onClick={() => onVertChange('center')} className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-600 border-l dark:border-gray-600 border-r ${vertical === 'center' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-600 dark:text-gray-300'}`} title="Meio"><MoveVertical size={16}/></button>
+              <button type="button" onClick={() => onVertChange('end')} className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-600 ${vertical === 'end' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-600 dark:text-gray-300'}`} title="Baixo"><ArrowDownToLine size={16}/></button>
+          </div>
+      </div>
+  );
+
+  // Reusable Input Class for Dark/Light Mode - Consistent with ProductForm
+  const inputClass = "w-full p-2 border rounded mt-1 text-sm bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none transition-colors";
+  const selectClass = "w-full p-2 border rounded mt-1 text-sm bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none transition-colors";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -85,7 +124,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-card">
           <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Configurações</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
             <X size={24} className="text-gray-500 dark:text-gray-400" />
           </button>
         </div>
@@ -99,7 +138,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-dark-card text-gray-800 dark:text-gray-200">
-            <form id="settingsForm" onSubmit={(e) => { e.preventDefault(); onSave(formData); }}>
+            <form id="settingsForm" onSubmit={(e) => { e.preventDefault(); handleSaveWrapper(); }}>
                 
                 {/* LAYOUT TAB */}
                 {activeTab === 'layout' && (
@@ -136,7 +175,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div className="pt-2">
                                 <label className="text-xs font-medium block mb-1">Logo do Cabeçalho</label>
                                 <div className="flex items-center gap-2">
-                                    <label className="cursor-pointer bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-3 py-2 rounded text-sm border dark:border-gray-600 flex items-center gap-2">
+                                    <label className="cursor-pointer bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-3 py-2 rounded text-sm border dark:border-gray-600 flex items-center gap-2 transition-colors">
                                         <FileImage size={16}/> Selecionar
                                         <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'headerLogoData')} className="hidden" />
                                     </label>
@@ -165,46 +204,55 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-medium block">Espessura Borda (px)</label><input type="number" name="cardBorderWidth" value={formData.cardBorderWidth} onChange={handleChange} className={inputClass} min="0" /></div>
-                                <div><label className="text-xs font-medium block">Cor da Borda</label><div className="flex gap-2 mt-1"><input type="color" name="cardBorderColor" value={formData.cardBorderColor} onChange={handleChange} className="h-10 w-10 p-0 border-0 bg-transparent" /><input type="text" name="cardBorderColor" value={formData.cardBorderColor} onChange={handleChange} className={`flex-1 ${inputClass} mt-0`} /></div></div>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div><label className="text-xs font-medium block">Espessura (px)</label><input type="number" name="cardBorderWidth" value={formData.cardBorderWidth} onChange={handleChange} className={inputClass} min="0" /></div>
+                                <div><label className="text-xs font-medium block">Arredondamento (px)</label><input type="number" name="cardBorderRadius" value={formData.cardBorderRadius || 0} onChange={handleChange} className={inputClass} min="0" /></div>
+                                <div><label className="text-xs font-medium block">Cor da Borda</label><div className="flex gap-2 mt-1"><input type="color" name="cardBorderColor" value={formData.cardBorderColor} onChange={handleChange} className="h-10 w-10 p-0 border-0 bg-transparent cursor-pointer" /><input type="text" name="cardBorderColor" value={formData.cardBorderColor} onChange={handleChange} className={`flex-1 ${inputClass} mt-0`} /></div></div>
                             </div>
 
                             <div className="flex items-center gap-2 mt-2"><input type="checkbox" name="showProductId" checked={formData.showProductId} onChange={handleChange} /><span className="text-sm font-medium">Mostrar Código/ID no Card</span></div>
 
                             <h3 className="font-semibold text-lg border-b dark:border-gray-700 pb-2 mb-4 mt-6">Tipografia & Alinhamento</h3>
                             
-                            <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-800/50 p-3 rounded">
-                                <div className="col-span-2 font-medium text-sm text-primary-600 dark:text-primary-400">Campo ID</div>
-                                <div><label className="text-xs font-medium">Tamanho Fonte</label><input type="number" name="cardIdFontSize" value={formData.cardIdFontSize} onChange={handleChange} className={inputClass} /></div>
-                                <div>
-                                    <label className="text-xs font-medium">Alinhamento Horiz.</label>
-                                    <select name="cardIdAlignHoriz" value={formData.cardIdAlignHoriz} onChange={handleChange} className={selectClass}>
-                                        <option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option>
-                                    </select>
+                            <div className="p-4 rounded bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 mb-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-sm flex items-center gap-2"><Type size={14}/> Campo ID</span>
                                 </div>
-                                <div>
-                                    <label className="text-xs font-medium">Alinhamento Vert.</label>
-                                    <select name="cardIdAlignVert" value={formData.cardIdAlignVert} onChange={handleChange} className={selectClass}>
-                                        <option value="start">Topo</option><option value="center">Meio</option><option value="end">Baixo</option>
-                                    </select>
+                                <div className="flex items-center gap-4">
+                                    <div>
+                                        <label className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-bold">Tamanho</label>
+                                        <input type="number" name="cardIdFontSize" value={formData.cardIdFontSize} onChange={handleChange} className="w-16 p-1 border rounded text-sm bg-white dark:bg-gray-700 dark:border-gray-600 text-center" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-bold">Alinhamento</label>
+                                        <AlignmentToolbar 
+                                            align={formData.cardIdAlignHoriz} 
+                                            vertical={formData.cardIdAlignVert}
+                                            onAlignChange={(v) => setFormData(p => ({...p, cardIdAlignHoriz: v}))}
+                                            onVertChange={(v) => setFormData(p => ({...p, cardIdAlignVert: v}))}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-800/50 p-3 rounded">
-                                <div className="col-span-2 font-medium text-sm text-primary-600 dark:text-primary-400">Campo Descrição</div>
-                                <div><label className="text-xs font-medium">Tamanho Fonte</label><input type="number" name="cardDescFontSize" value={formData.cardDescFontSize} onChange={handleChange} className={inputClass} /></div>
-                                <div>
-                                    <label className="text-xs font-medium">Alinhamento Horiz.</label>
-                                    <select name="cardDescAlignHoriz" value={formData.cardDescAlignHoriz} onChange={handleChange} className={selectClass}>
-                                        <option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option>
-                                    </select>
+                            <div className="p-4 rounded bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-sm flex items-center gap-2"><Type size={14}/> Campo Descrição</span>
                                 </div>
-                                <div>
-                                    <label className="text-xs font-medium">Alinhamento Vert.</label>
-                                    <select name="cardDescAlignVert" value={formData.cardDescAlignVert} onChange={handleChange} className={selectClass}>
-                                        <option value="start">Topo</option><option value="center">Meio</option><option value="end">Baixo</option>
-                                    </select>
+                                <div className="flex items-center gap-4">
+                                    <div>
+                                        <label className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-bold">Tamanho</label>
+                                        <input type="number" name="cardDescFontSize" value={formData.cardDescFontSize} onChange={handleChange} className="w-16 p-1 border rounded text-sm bg-white dark:bg-gray-700 dark:border-gray-600 text-center" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-bold">Alinhamento</label>
+                                        <AlignmentToolbar 
+                                            align={formData.cardDescAlignHoriz} 
+                                            vertical={formData.cardDescAlignVert}
+                                            onAlignChange={(v) => setFormData(p => ({...p, cardDescAlignHoriz: v}))}
+                                            onVertChange={(v) => setFormData(p => ({...p, cardDescAlignVert: v}))}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -213,15 +261,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <h3 className="font-semibold text-lg border-b dark:border-gray-700 pb-2 mb-4">Cores de Fundo & Texto</h3>
                             
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-medium block">Fundo Imagem</label><div className="flex gap-2 mt-1"><input type="color" name="cardImgBg" value={formData.cardImgBg} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent" /><span className="text-xs self-center uppercase">{formData.cardImgBg}</span></div></div>
+                                <div><label className="text-xs font-medium block">Fundo Imagem</label><div className="flex gap-2 mt-1"><input type="color" name="cardImgBg" value={formData.cardImgBg} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent cursor-pointer" /><span className="text-xs self-center uppercase">{formData.cardImgBg}</span></div></div>
                                 
-                                <div><label className="text-xs font-medium block">Fundo ID</label><div className="flex gap-2 mt-1"><input type="color" name="cardIdBg" value={formData.cardIdBg} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent" /><span className="text-xs self-center uppercase">{formData.cardIdBg}</span></div></div>
+                                <div><label className="text-xs font-medium block">Fundo ID</label><div className="flex gap-2 mt-1"><input type="color" name="cardIdBg" value={formData.cardIdBg} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent cursor-pointer" /><span className="text-xs self-center uppercase">{formData.cardIdBg}</span></div></div>
                                 
-                                <div><label className="text-xs font-medium block">Fundo Descrição</label><div className="flex gap-2 mt-1"><input type="color" name="cardDescBg" value={formData.cardDescBg} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent" /><span className="text-xs self-center uppercase">{formData.cardDescBg}</span></div></div>
+                                <div><label className="text-xs font-medium block">Fundo Descrição</label><div className="flex gap-2 mt-1"><input type="color" name="cardDescBg" value={formData.cardDescBg} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent cursor-pointer" /><span className="text-xs self-center uppercase">{formData.cardDescBg}</span></div></div>
                                 
-                                <div><label className="text-xs font-medium block">Texto ID</label><div className="flex gap-2 mt-1"><input type="color" name="cardIdTextColor" value={formData.cardIdTextColor} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent" /><span className="text-xs self-center uppercase">{formData.cardIdTextColor}</span></div></div>
+                                <div><label className="text-xs font-medium block">Texto ID</label><div className="flex gap-2 mt-1"><input type="color" name="cardIdTextColor" value={formData.cardIdTextColor} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent cursor-pointer" /><span className="text-xs self-center uppercase">{formData.cardIdTextColor}</span></div></div>
                                 
-                                <div><label className="text-xs font-medium block">Texto Descrição</label><div className="flex gap-2 mt-1"><input type="color" name="cardDescTextColor" value={formData.cardDescTextColor} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent" /><span className="text-xs self-center uppercase">{formData.cardDescTextColor}</span></div></div>
+                                <div><label className="text-xs font-medium block">Texto Descrição</label><div className="flex gap-2 mt-1"><input type="color" name="cardDescTextColor" value={formData.cardDescTextColor} onChange={handleChange} className="h-8 w-8 p-0 border-0 bg-transparent cursor-pointer" /><span className="text-xs self-center uppercase">{formData.cardDescTextColor}</span></div></div>
                             </div>
 
                             <h3 className="font-semibold text-lg border-b dark:border-gray-700 pb-2 mb-4 mt-6">Marca D'água</h3>
@@ -236,7 +284,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                     {formData.watermarkType === 'text' ? (
                                         <input type="text" name="watermarkText" value={formData.watermarkText||''} onChange={handleChange} placeholder="Texto da marca d'água" className={inputClass} />
                                     ) : (
-                                        <label className="cursor-pointer block bg-white dark:bg-gray-700 p-2 border dark:border-gray-600 rounded text-center text-xs hover:bg-gray-100 dark:hover:bg-gray-600">
+                                        <label className="cursor-pointer block bg-white dark:bg-gray-700 p-2 border dark:border-gray-600 rounded text-center text-xs hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                                             Escolher Imagem Específica
                                             <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'watermarkLogoData')} className="hidden" />
                                         </label>
@@ -262,16 +310,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <h3 className="font-bold">Importar/Exportar Produtos</h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Use arquivos Excel (.xlsx) com colunas: ID, DESCRIÇÃO, CATEGORIA.</p>
                             <div className="flex gap-2 mt-auto">
-                                <button type="button" onClick={onImportXLSX} className="flex-1 bg-gray-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-gray-700"><Upload size={16}/> Importar XLSX</button>
-                                <button type="button" onClick={onExportXLSX} className="flex-1 bg-gray-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-gray-700"><Download size={16}/> Exportar XLSX</button>
+                                <button type="button" onClick={onImportXLSX} className="flex-1 bg-gray-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-gray-700 transition-colors"><Upload size={16}/> Importar XLSX</button>
+                                <button type="button" onClick={onExportXLSX} className="flex-1 bg-gray-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-gray-700 transition-colors"><Download size={16}/> Exportar XLSX</button>
                             </div>
                         </div>
                         <div className="border dark:border-gray-700 rounded p-6 flex flex-col gap-4 bg-gray-50 dark:bg-gray-800/50">
                             <h3 className="font-bold">Imagens</h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Importe múltiplas imagens (nome do arquivo = ID do produto) ou limpe imagens órfãs.</p>
                             <div className="flex gap-2 mt-auto">
-                                <button type="button" onClick={onBatchImages} className="flex-1 bg-blue-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-blue-700"><FolderInput size={16}/> Lote Imagens</button>
-                                <button type="button" onClick={handleCleanup} disabled={cleaning} className="flex-1 bg-red-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-red-700 disabled:opacity-50"><Trash2 size={16}/> Limpar Servidor</button>
+                                <button type="button" onClick={onBatchImages} className="flex-1 bg-blue-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"><FolderInput size={16}/> Lote Imagens</button>
+                                <button type="button" onClick={handleCleanup} disabled={cleaning} className="flex-1 bg-red-600 text-white py-2 rounded text-sm flex items-center justify-center gap-2 hover:bg-red-700 disabled:opacity-50 transition-colors"><Trash2 size={16}/> Limpar Servidor</button>
                             </div>
                         </div>
                     </div>
@@ -282,8 +330,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Footer Actions */}
         <div className="p-5 border-t border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg flex justify-end gap-3">
-            <button onClick={onClose} className="px-6 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200">Cancelar</button>
-            <button onClick={() => onSave(formData)} className="px-6 py-2 rounded bg-primary-600 text-white hover:bg-primary-700 flex items-center gap-2 font-medium"><Save size={18}/> Salvar Tudo</button>
+            <button onClick={onClose} className="px-6 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors">Cancelar</button>
+            <button onClick={() => handleSaveWrapper()} disabled={isSaving} className="px-6 py-2 rounded bg-primary-600 text-white hover:bg-primary-700 flex items-center gap-2 font-medium disabled:opacity-70 transition-colors">
+                {isSaving ? <RefreshCw className="animate-spin" size={18}/> : <Save size={18}/>}
+                {isSaving ? 'Salvando...' : 'Salvar Tudo'}
+            </button>
         </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+
 export interface Product {
   id: string;
   description: string;
@@ -46,6 +47,7 @@ export interface CatalogSettings {
   cardStyle: 'classic' | 'modern' | 'minimal';
   cardBorderWidth: number;
   cardBorderColor: string;
+  cardBorderRadius: number; // NEW: Rounded corners
   
   // Colors
   cardImgBg: string;
@@ -92,6 +94,7 @@ export const DEFAULT_SETTINGS: CatalogSettings = {
   cardStyle: 'classic',
   cardBorderWidth: 1,
   cardBorderColor: '#e5e7eb',
+  cardBorderRadius: 4, // Default radius
   cardImgBg: '#ffffff',
   cardIdBg: '#0284c7',
   cardDescBg: '#f9fafb',

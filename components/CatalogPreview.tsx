@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import { Product, CatalogSettings, ExportOptions } from '../types';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, Eye, EyeOff, X, Check } from 'lucide-react';
@@ -51,21 +52,35 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
           : `url(${settings.watermarkLogoData || settings.headerLogoData})`,
       backgroundRepeat: 'repeat', // Always repeat to fill background
       backgroundPosition: 'center',
-      // Use user setting converted to px, defaulting to 150px (approx 40mm)
+      // Use user setting converted to px
       backgroundSize: settings.watermarkType === 'text' 
           ? '300px 300px' 
-          : `${mmToPx(settings.watermarkSizeMm || 40)}px`, 
+          : `${mmToPx(settings.watermarkSizeMm || 40)}px`, // Explicitly use user setting for logo size
       opacity: settings.watermarkOpacity,
       pointerEvents: 'none',
       position: 'absolute', inset: 0, zIndex: 0
   } : {};
+
+  // --- ALIGNMENT MAPPING ---
+  // Helper to map 'left'/'right'/'center' to flex properties
+  const mapAlignJustify = (align: string) => {
+      if (align === 'left' || align === 'start') return 'flex-start';
+      if (align === 'right' || align === 'end') return 'flex-end';
+      return 'center';
+  };
+
+  const mapAlignVertical = (align: string) => {
+      if (align === 'start') return 'flex-start';
+      if (align === 'end') return 'flex-end';
+      return 'center';
+  };
 
   // --- STYLING HELPERS ---
   const getCardStyle = () => ({
       backgroundColor: settings.cardImgBg,
       borderWidth: `${settings.cardBorderWidth}px`,
       borderColor: settings.cardBorderColor,
-      borderRadius: settings.cardStyle === 'modern' ? '8px' : '4px',
+      borderRadius: `${settings.cardBorderRadius}px`, // Applied Radius
       boxShadow: settings.cardStyle === 'modern' ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none'
   });
 
@@ -73,16 +88,19 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
       backgroundColor: settings.cardIdBg,
       color: settings.cardIdTextColor,
       fontSize: `${settings.cardIdFontSize}px`,
-      justifyContent: settings.cardIdAlignHoriz,
-      alignItems: settings.cardIdAlignVert
+      // Crucial: We need BOTH textAlign and justifyContent for full robustness
+      textAlign: settings.cardIdAlignHoriz as any,
+      justifyContent: mapAlignJustify(settings.cardIdAlignHoriz),
+      alignItems: mapAlignVertical(settings.cardIdAlignVert)
   });
 
   const getDescStyle = () => ({
       backgroundColor: settings.cardDescBg,
       color: settings.cardDescTextColor,
       fontSize: `${settings.cardDescFontSize}px`,
-      justifyContent: settings.cardDescAlignHoriz,
-      alignItems: settings.cardDescAlignVert
+      textAlign: settings.cardDescAlignHoriz as any,
+      justifyContent: mapAlignJustify(settings.cardDescAlignHoriz),
+      alignItems: mapAlignVertical(settings.cardDescAlignVert)
   });
 
   // --- EXPORT LOGIC (GHOST RENDER) ---
@@ -177,7 +195,7 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
       const localEmptySlots = Math.max(0, itemsPerPage - items.length);
       
       return (
-        // NOTE: Explicit dimensions on this container are CRITICAL to prevent flex compression issues
+        // Use flex-col for the main page container to ensure footer/header/grid distribute space naturally
         <div className="a4-page text-gray-900 relative flex flex-col box-border shrink-0"
              style={{
                 width: '210mm',
@@ -191,22 +209,21 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
             {/* Watermark */}
             <div style={watermarkStyle}></div>
 
-            {/* Header */}
-            <header className="mb-4 border-b-2 border-gray-200 pb-2 flex items-center justify-between h-[25mm] shrink-0 relative z-10">
-                {settings.headerLogoData && <img src={settings.headerLogoData} alt="Logo" className="h-full object-contain max-w-[150px]" />}
+            {/* Header - Fixed height or auto */}
+            <header className="mb-4 border-b-2 border-gray-200 pb-2 flex items-center justify-between min-h-[25mm] shrink-0 relative z-10">
+                {settings.headerLogoData && <img src={settings.headerLogoData} alt="Logo" className="h-[20mm] object-contain max-w-[150px]" />}
                 <div className="flex-1 px-4 font-bold" style={{ textAlign: settings.headerAlign, color: settings.headerTextColor, fontSize: `${settings.headerTextSize}px` }}>
                     {settings.headerText}
                 </div>
             </header>
 
-            {/* Grid - Use CSS Grid with explicit row height calculation if needed, or flex-grow */}
-            <div className="grid h-full content-start relative z-10"
+            {/* Grid - Use flex-1 to take remaining space automatically */}
+            <div className="grid relative z-10 flex-1 content-start"
                 style={{
                     gridTemplateColumns: `repeat(${settings.gridCols}, 1fr)`,
                     gridTemplateRows: `repeat(${settings.gridRows}, 1fr)`,
                     gap: `${settings.gridGap}mm`,
-                    // Important: Force grid to take remaining height exactly
-                    height: 'calc(100% - 40mm)', 
+                    minHeight: 0, // Important for nested flex scrolling issues, though not scrolling here
                 }}>
                 
                 {items.map(product => (
@@ -219,13 +236,13 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                             )}
                         </div>
                         
-                        <div className="flex min-h-[45px] items-stretch border-t" style={{ borderColor: settings.cardBorderColor }}>
+                        <div className="flex min-h-[45px] items-stretch border-t overflow-hidden" style={{ borderColor: settings.cardBorderColor }}>
                             {settings.showProductId && (
-                                <div className="flex px-2 font-bold min-w-[60px]" style={getIdStyle()}>
+                                <div className="flex px-2 font-bold shrink-0 w-full" style={{ ...getIdStyle(), width: '30%' }}>
                                     {product.id}
                                 </div>
                             )}
-                            <div className="flex-1 flex p-2 leading-tight" style={getDescStyle()}>
+                            <div className="flex p-2 leading-tight shrink-0 w-full" style={{ ...getDescStyle(), width: settings.showProductId ? '70%' : '100%' }}>
                                 <span className="line-clamp-3 w-full">{product.description}</span>
                             </div>
                         </div>
@@ -237,8 +254,8 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                 ))}
             </div>
 
-            {/* Footer */}
-            <footer className="absolute bottom-0 left-0 right-0 h-[15mm] border-t border-gray-200 flex items-center px-[10mm] justify-between text-xs text-gray-500 bg-white z-20">
+            {/* Footer - Background Removed to show Watermark */}
+            <footer className="h-[15mm] border-t border-gray-200 flex items-center justify-between text-xs text-gray-500 z-20 shrink-0 mt-4 bg-transparent">
                 <span className="font-bold">{settings.showPageNumbers ? `Página ${pNum}` : ''}</span>
                 <span style={{ textAlign: settings.footerAlign }} className="flex-1 px-4 italic">
                     {settings.footerText}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
 import { Upload, X, Save, RefreshCw, Link as LinkIcon, Edit2 } from 'lucide-react';
@@ -94,30 +95,13 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
     try {
       let imageDataUrl: string | null = null;
       
-      // If previewUrl is Base64, it means it's new/edited
       if (previewUrl && previewUrl.startsWith('data:')) {
           imageDataUrl = previewUrl;
       } 
-      // If previewUrl is http... it means it's existing, so we send null (no change)
-      // If previewUrl is null, it means we removed it or there is none.
-      // BUT, we need to explicitly tell backend to remove if user clicked X. 
-      // Simple logic: If previewUrl is null but product had imageName, we might want to delete. 
-      // For now, our API assumes "null" means "remove" ONLY if we were explicit, 
-      // but the `updateProduct` logic in `server.js` handles "if undefined, keep".
-      // We should send `imageDataUrl: null` ONLY if we want to delete.
-      // Current simplified logic: We only send data if it's new. Deletion via edit form X button is tricky without a specific flag.
-      // Let's assume if previewUrl is null, we want to remove image.
       
-      if (!previewUrl && product?.imageName) {
-          // Ideally we flag "remove image"
-          // For this implementation, let's pass an empty string or specific flag?
-          // server.js logic: if (imageDataUrl && ...). It doesn't handle explicit null well for removal unless we change it.
-          // Let's relying on the user replacing or keeping for now to be safe, or see `server.js` update.
-      }
-
       const payload = {
         ...formData,
-        imageDataUrl: imageDataUrl // New image data
+        imageDataUrl: imageDataUrl 
       };
 
       if (product) {
@@ -132,6 +116,8 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
       setIsLoading(false);
     }
   };
+
+  const inputClass = "w-full p-2 border rounded focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white disabled:opacity-60 transition-colors";
 
   return (
     <>
@@ -158,7 +144,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
             disabled={!!product}
             value={formData.id}
             onChange={e => setFormData(prev => ({ ...prev, id: e.target.value }))}
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-bg dark:border-dark-border dark:text-gray-100 disabled:opacity-60"
+            className={inputClass}
           />
         </div>
 
@@ -169,7 +155,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
             rows={3}
             value={formData.description}
             onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-bg dark:border-dark-border dark:text-gray-100"
+            className={inputClass}
           />
         </div>
 
@@ -180,7 +166,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
               list="categories-list"
               value={formData.category}
               onChange={e => setFormData(prev => ({...prev, category: e.target.value}))}
-              className="w-full p-2 border rounded focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-bg dark:border-dark-border dark:text-gray-100"
+              className={inputClass}
            />
            <datalist id="categories-list">
                {categories.map(cat => <option key={cat} value={cat} />)}
@@ -191,15 +177,15 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
           <div className="flex justify-between items-center mb-2">
              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto</label>
              <div className="flex gap-2 text-xs">
-                <button type="button" onClick={() => setUploadMode('file')} className={`px-3 py-1 rounded ${uploadMode === 'file' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>Upload</button>
-                <button type="button" onClick={() => setUploadMode('url')} className={`px-3 py-1 rounded ${uploadMode === 'url' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>URL</button>
+                <button type="button" onClick={() => setUploadMode('file')} className={`px-3 py-1 rounded ${uploadMode === 'file' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 dark:text-gray-200'}`}>Upload</button>
+                <button type="button" onClick={() => setUploadMode('url')} className={`px-3 py-1 rounded ${uploadMode === 'url' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 dark:text-gray-200'}`}>URL</button>
              </div>
           </div>
           
           <div className="flex gap-4 items-start">
             <div className="flex-1">
               {uploadMode === 'file' ? (
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-bg/50">
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       <Upload className="w-8 h-8 mb-2 text-gray-400" />
                       <p className="text-xs text-gray-500">Clique para selecionar</p>
@@ -208,8 +194,8 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
                   </label>
               ) : (
                   <div className="flex gap-2">
-                     <input type="text" value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="Cole a URL" className="flex-1 p-2 text-sm border rounded dark:bg-dark-bg" />
-                     <button type="button" onClick={handleUrlLoad} className="bg-gray-200 p-2 rounded"><LinkIcon size={18} /></button>
+                     <input type="text" value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="Cole a URL" className={inputClass} />
+                     <button type="button" onClick={handleUrlLoad} className="bg-gray-200 dark:bg-gray-700 p-2 rounded border dark:border-gray-600"><LinkIcon size={18} className="text-gray-700 dark:text-gray-200" /></button>
                   </div>
               )}
                
@@ -220,7 +206,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
                )}
             </div>
             
-            <div className="w-32 h-32 bg-gray-100 dark:bg-dark-bg rounded border flex items-center justify-center relative">
+            <div className="w-32 h-32 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600 flex items-center justify-center relative overflow-hidden">
               {previewUrl ? (
                 <>
                   <img src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
@@ -232,11 +218,11 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSuccess, onCancel,
         </div>
 
         <div className="mt-auto pt-4 flex gap-3">
-          <button type="submit" disabled={isLoading} className="flex-1 bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700 flex items-center justify-center gap-2 disabled:opacity-70">
+          <button type="submit" disabled={isLoading} className="flex-1 bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700 flex items-center justify-center gap-2 disabled:opacity-70 transition-all">
             {isLoading ? <RefreshCw className="animate-spin" size={20}/> : <Save size={20}/>}
-            {product ? 'Atualizar' : 'Salvar'}
+            {isLoading ? (product ? 'Atualizando...' : 'Salvando...') : (product ? 'Atualizar' : 'Salvar')}
           </button>
-          {product && <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300">Cancelar</button>}
+          {product && <button type="button" onClick={onCancel} className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 py-2 px-4 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancelar</button>}
         </div>
       </form>
     </div>
