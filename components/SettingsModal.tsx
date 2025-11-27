@@ -294,8 +294,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                         <input type="number" name="watermarkSizeMm" value={formData.watermarkSizeMm} onChange={handleChange} className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className="text-xs block mb-1">Opacidade</label>
-                                        <input type="range" name="watermarkOpacity" min="0.05" max="0.5" step="0.05" value={formData.watermarkOpacity} onChange={handleChange} className="w-full" />
+                                        <label className="text-xs block mb-1 flex justify-between">
+                                            <span>Opacidade</span>
+                                        </label>
+                                        <div className="flex items-center gap-4">
+                                            <input 
+                                                type="range" 
+                                                name="watermarkOpacity" 
+                                                min="0" 
+                                                max="1" 
+                                                step="0.01" 
+                                                value={formData.watermarkOpacity} 
+                                                onChange={handleChange} 
+                                                className="flex-1" 
+                                            />
+                                            <div className="flex items-center border dark:border-gray-600 rounded overflow-hidden w-20 bg-white dark:bg-gray-700">
+                                                <input 
+                                                    type="number" 
+                                                    min="0" 
+                                                    max="100" 
+                                                    value={Math.round(formData.watermarkOpacity * 100)} 
+                                                    onChange={(e) => {
+                                                        const val = Math.min(100, Math.max(0, Number(e.target.value)));
+                                                        setFormData(prev => ({ ...prev, watermarkOpacity: val / 100 }));
+                                                    }}
+                                                    className="w-full text-center text-sm p-1 border-none outline-none bg-transparent dark:text-white"
+                                                />
+                                                <span className="pr-2 text-xs text-gray-500 dark:text-gray-400">%</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}

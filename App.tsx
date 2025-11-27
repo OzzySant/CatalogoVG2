@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Product, CatalogSettings, DEFAULT_SETTINGS } from './types';
 import * as api from './services/api';
@@ -15,7 +16,9 @@ import {
   Trash2, 
   AlertCircle,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ArrowDownAZ,
+  ArrowUpAZ
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -36,10 +39,12 @@ const App: React.FC = () => {
   // Error State
   const [backendError, setBackendError] = useState(false);
   
-  // Filter State
+  // Filter & Sort State
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [sortField, setSortField] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('DESC');
   
   // Edit State
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -90,14 +95,21 @@ const App: React.FC = () => {
   useEffect(() => {
     loadProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, itemsPerPage, debouncedSearch, selectedCategory, currentView]); 
+  }, [currentPage, itemsPerPage, debouncedSearch, selectedCategory, sortField, sortOrder, currentView]); 
   // Refetch when view changes to preview to ensure we have fresh data formatted for the grid
 
   // --- Data Loading ---
 
   const loadProducts = async () => {
     try {
-      const res = await api.fetchProducts(currentPage, itemsPerPage, debouncedSearch, selectedCategory);
+      const res = await api.fetchProducts(
+          currentPage, 
+          itemsPerPage, 
+          debouncedSearch, 
+          selectedCategory, 
+          sortField, 
+          sortOrder
+      );
       setProducts(res.products);
       setTotalCount(res.totalCount);
       setBackendError(false);
@@ -331,6 +343,7 @@ const App: React.FC = () => {
           {/* Sidebar List */}
           <div className="w-full md:w-1/3 lg:w-1/4 border-r border-gray-200 dark:border-dark-border bg-white dark:bg-dark-card flex flex-col h-full">
             <div className="p-4 border-b border-gray-200 dark:border-dark-border space-y-3">
+               {/* Search */}
                <div className="relative">
                   <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input 
@@ -349,6 +362,8 @@ const App: React.FC = () => {
                       </button>
                   )}
                </div>
+               
+               {/* Category Filter */}
                <div className="relative">
                   <Filter size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <select 
@@ -359,6 +374,28 @@ const App: React.FC = () => {
                      <option value="all">Todas as Categorias</option>
                      {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
+               </div>
+
+               {/* Sorting Controls */}
+               <div className="flex gap-2 items-center">
+                   <select 
+                      value={sortField}
+                      onChange={(e) => { setSortField(e.target.value); setCurrentPage(1); }}
+                      className="flex-1 px-2 py-2 border rounded text-sm bg-gray-50 dark:bg-dark-bg dark:border-dark-border dark:text-gray-100 outline-none"
+                   >
+                       <option value="createdAt">Data Criação</option>
+                       <option value="id">Código / ID</option>
+                       <option value="category">Categoria</option>
+                       <option value="description">Descrição</option>
+                   </select>
+                   
+                   <button 
+                      onClick={() => { setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC'); setCurrentPage(1); }}
+                      className="p-2 border rounded bg-gray-50 dark:bg-dark-bg dark:border-dark-border text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      title={sortOrder === 'ASC' ? "Crescente (A-Z)" : "Decrescente (Z-A)"}
+                   >
+                       {sortOrder === 'ASC' ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
+                   </button>
                </div>
             </div>
 

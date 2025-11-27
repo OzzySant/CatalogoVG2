@@ -86,6 +86,14 @@ app.get('/api/products', checkDb, async (req, res) => {
         const search = req.query.search ? req.query.search.trim() : '';
         const category = req.query.category ? req.query.category.trim() : '';
         
+        // Sorting
+        const orderBy = req.query.orderBy || 'createdAt';
+        const orderDir = (req.query.orderDir || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+        // Whitelist allowed columns for sorting to prevent SQL injection
+        const allowedSortColumns = ['id', 'description', 'category', 'createdAt'];
+        const sortColumn = allowedSortColumns.includes(orderBy) ? orderBy : 'createdAt';
+
         const offset = (page - 1) * limit;
 
         let whereClause = 'WHERE 1=1'; 
@@ -113,7 +121,7 @@ app.get('/api/products', checkDb, async (req, res) => {
         const productsQuery = `
             SELECT * FROM products
             ${whereClause}
-            ORDER BY createdAt DESC
+            ORDER BY ${sortColumn} ${orderDir}
             LIMIT ? OFFSET ?
         `;
         const productParams = [...params, limit, offset]; 
@@ -185,197 +193,4 @@ app.put('/api/products/:id', checkDb, async (req, res) => {
         const currentProduct = rows[0];
         
         // Determine new values
-        const newDescription = description !== undefined ? description : currentProduct.description;
-        const newCategory = category !== undefined ? category : currentProduct.category;
-        let newImageName = currentProduct.imageName;
-
-        // If imageDataUrl is explicitly passed as a string (Base64), update it.
-        // If it's null (explicit removal) or undefined (no change), handle accordingly.
-        // NOTE: Frontend sends 'null' to keep existing, empty string to remove? 
-        // Let's stick to: If it is a Base64 string, replace. 
-        
-        if (imageDataUrl && typeof imageDataUrl === 'string' && imageDataUrl.startsWith('data:image')) {
-            // Replace image
-            if (currentProduct.imageName) removeImageFile(currentProduct.imageName);
-            newImageName = saveImageFromDataUrl(id, imageDataUrl);
-        } 
-        // If user specifically requested to remove image (optional logic, usually frontend just doesn't send anything if no change)
-        
-        await pool.execute(
-            'UPDATE products SET description = ?, imageName = ?, category = ? WHERE id = ?',
-            [newDescription, newImageName, newCategory, id]
-        );
-        
-        const [updatedRows] = await pool.execute('SELECT * FROM products WHERE id = ?', [id]);
-        res.status(200).json(updatedRows[0]);
-
-    } catch (err) {
-        console.error(`Erro PUT /api/products/${id}:`, err.message);
-        res.status(500).json({ error: 'Erro ao atualizar produto: ' + err.message });
-    }
-});
-
-
-// [DELETE] Deletar um produto
-app.delete('/api/products/:id', checkDb, async (req, res) => {
-    const { id } = req.params;
-    let connection;
-
-    try {
-        connection = await getDbPool().getConnection();
-
-        const [rows] = await connection.execute('SELECT imageName FROM products WHERE id = ?', [id]);
-        if (rows.length === 0) {
-            return res.status(404).json({ error: `Produto com ID "${id}" não encontrado.` });
-        }
-
-        const { imageName } = rows[0];
-
-        await connection.execute('DELETE FROM products WHERE id = ?', [id]);
-
-        if (imageName) {
-            await removeImageFile(imageName);
-        }
-
-        res.status(200).json({ success: true, message: `Produto ${id} excluído.` });
-
-    } catch (err) {
-        console.error(`[DELETE /api/products/${id}] Erro:`, err.message);
-        res.status(500).json({ error: 'Erro de servidor ao excluir produto.' });
-    } finally {
-        if (connection) connection.release();
-    }
-});
-
-
-// [GET] Obter todas as categorias
-app.get('/api/categories', checkDb, async (req, res) => {
-    try {
-        const pool = getDbPool();
-        const [rows] = await pool.query(
-            "SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != '' ORDER BY category ASC"
-        );
-        const categories = rows.map(row => row.category);
-        res.status(200).json(categories);
-
-    } catch (err) {
-        console.error('Erro GET /api/categories:', err.message);
-        res.status(500).json({ error: 'Erro ao buscar categorias.' });
-    }
-});
-
-
-// [POST] Limpeza
-app.post('/api/cleanup/orphaned-images', checkDb, async (req, res) => {
-    let connection;
-    try {
-        const pool = getDbPool();
-        connection = await pool.getConnection();
-
-        const [rows] = await connection.query(
-            "SELECT DISTINCT imageName FROM products WHERE imageName IS NOT NULL AND imageName != ''"
-        );
-
-        const dbImageSet = new Set(rows.map(row => row.imageName));
-        const uploadDir = path.join(__dirname, 'uploads');
-        
-        if (!fs.existsSync(uploadDir)) return res.status(200).json({ message: "Sem pasta uploads.", deletedCount: 0 });
-
-        const filesOnDisk = await fsp.readdir(uploadDir);
-        let deletedCount = 0;
-        let keptCount = 0;
-        const errors = [];
-
-        await Promise.all(filesOnDisk.map(async (fileName) => {
-            if (!dbImageSet.has(fileName)) {
-                try {
-                    await fsp.unlink(path.join(uploadDir, fileName));
-                    deletedCount++;
-                } catch (err) {
-                    errors.push(fileName);
-                }
-            } else {
-                keptCount++;
-            }
-        }));
-
-        res.status(200).json({ message: "Limpeza concluída.", deletedCount, keptCount, errors });
-
-    } catch (err) {
-        console.error('Erro cleanup:', err.message);
-        res.status(500).json({ error: 'Erro de servidor durante a limpeza.' });
-    } finally {
-        if (connection) connection.release();
-    }
-});
-
-
-// --- SETTINGS ---
-app.get('/api/settings', checkDb, async (req, res) => {
-    try {
-        const pool = getDbPool();
-        const [rows] = await pool.execute('SELECT settings_data FROM settings WHERE config_id = 1');
-        if (rows.length > 0) res.status(200).json(rows[0].settings_data || {});
-        else {
-            await pool.execute('INSERT INTO settings (config_id, settings_data) VALUES (1, ?)', [JSON.stringify({})]);
-            res.status(200).json({});
-        }
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar configurações.' });
-    }
-});
-
-app.post('/api/settings', checkDb, async (req, res) => {
-    const settingsData = req.body;
-    if (!settingsData) return res.status(400).json({ error: 'Nenhum dado.' });
-    const json = JSON.stringify(settingsData);
-    try {
-        const pool = getDbPool();
-        await pool.execute(
-            `INSERT INTO settings (config_id, settings_data) VALUES (1, ?) ON DUPLICATE KEY UPDATE settings_data = ?`,
-            [json, json]
-        );
-        res.status(200).json({ message: 'Salvo.' });
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao salvar.' });
-    }
-});
-
-// --- BATCH IMPORT ---
-app.post('/api/products/batch-import', checkDb, async (req, res) => {
-    const products = req.body;
-    if (!Array.isArray(products)) return res.status(400).json({ error: 'Dados inválidos.' });
-
-    const pool = getDbPool();
-    const connection = await pool.getConnection();
-    let imported = 0, skipped = 0;
-
-    try {
-        await connection.beginTransaction();
-        for (const p of products) {
-            if (!p.id || !p.description) { skipped++; continue; }
-            const [ex] = await connection.execute('SELECT id FROM products WHERE id = ?', [p.id]);
-            if (ex.length === 0) {
-                await connection.execute(
-                    'INSERT INTO products (id, description, imageName, category) VALUES (?, ?, ?, ?)',
-                    [p.id, p.description, null, p.category || null]
-                );
-                imported++;
-            } else {
-                skipped++;
-            }
-        }
-        await connection.commit();
-        res.status(200).json({ imported, skipped });
-    } catch (err) {
-        await connection.rollback();
-        res.status(500).json({ error: 'Erro na importação.' });
-    } finally {
-        connection.release();
-    }
-});
-
-app.listen(PORT, async () => {
-    try { await initDb(); console.log(`Servidor rodando: http://localhost:${PORT}`); }
-    catch(e) { console.error("DB Error:", e.message); }
-});
+        const newDescription = description !== undefined ? description :

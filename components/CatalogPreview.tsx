@@ -1,7 +1,7 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Product, CatalogSettings, ExportOptions } from '../types';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, Eye, EyeOff, X, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, Eye, EyeOff, Check } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { fetchAllProducts } from '../services/api';
@@ -25,12 +25,11 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
   const [exportOpts, setExportOpts] = useState<ExportOptions>({ format: 'pdf', quality: 0.9, range: 'current', customRange: '' });
 
   // Refs
-  const pageRef = useRef<HTMLDivElement>(null);
-  const ghostRef = useRef<HTMLDivElement>(null); // For invisible rendering
+  const ghostRef = useRef<HTMLDivElement>(null);
 
   const itemsPerPage = settings.gridCols * settings.gridRows;
   
-  // Conversion: 1mm approx 3.78px
+  // Conversion helpers
   const mmToPx = (mm: number) => mm * 3.7795;
 
   // --- WATERMARK GENERATION ---
@@ -50,77 +49,64 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
       backgroundImage: settings.watermarkType === 'text' 
           ? generateTextWatermark(settings.watermarkText || 'CATÁLOGO') 
           : `url(${settings.watermarkLogoData || settings.headerLogoData})`,
-      backgroundRepeat: 'repeat', // Always repeat to fill background
+      backgroundRepeat: 'repeat', 
       backgroundPosition: 'center',
-      // Use user setting converted to px
       backgroundSize: settings.watermarkType === 'text' 
           ? '300px 300px' 
-          : `${mmToPx(settings.watermarkSizeMm || 40)}px`, // Explicitly use user setting for logo size
+          : `${mmToPx(settings.watermarkSizeMm || 40)}px`, 
       opacity: settings.watermarkOpacity,
       pointerEvents: 'none',
       position: 'absolute', inset: 0, zIndex: 0
   } : {};
 
-  // --- ALIGNMENT MAPPING ---
-  // Helper to map 'left'/'right'/'center' to flex properties
-  const mapAlignJustify = (align: string) => {
-      if (align === 'left' || align === 'start') return 'flex-start';
-      if (align === 'right' || align === 'end') return 'flex-end';
-      return 'center';
-  };
-
-  const mapAlignVertical = (align: string) => {
-      if (align === 'start') return 'flex-start';
-      if (align === 'end') return 'flex-end';
-      return 'center';
-  };
-
-  // --- STYLING HELPERS ---
+  // --- STYLE HELPERS (Refactored for Robustness) ---
+  
   const getCardStyle = () => ({
       backgroundColor: settings.cardImgBg,
       borderWidth: `${settings.cardBorderWidth}px`,
       borderColor: settings.cardBorderColor,
-      borderRadius: `${settings.cardBorderRadius}px`, // Applied Radius
-      boxShadow: settings.cardStyle === 'modern' ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none'
+      borderRadius: `${settings.cardBorderRadius}px`,
+      boxShadow: settings.cardStyle === 'modern' ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      boxSizing: 'border-box' as const
   });
 
-  const getIdStyle = () => ({
-      backgroundColor: settings.cardIdBg,
-      color: settings.cardIdTextColor,
-      fontSize: `${settings.cardIdFontSize}px`,
-      // Crucial: We need BOTH textAlign and justifyContent for full robustness
-      textAlign: settings.cardIdAlignHoriz as any,
-      justifyContent: mapAlignJustify(settings.cardIdAlignHoriz),
-      alignItems: mapAlignVertical(settings.cardIdAlignVert)
-  });
+  // Helper to map Flex Alignment
+  const mapJustifyContent = (val: string) => {
+      if (val === 'start') return 'flex-start';
+      if (val === 'end') return 'flex-end';
+      return 'center';
+  };
 
-  const getDescStyle = () => ({
-      backgroundColor: settings.cardDescBg,
-      color: settings.cardDescTextColor,
-      fontSize: `${settings.cardDescFontSize}px`,
-      textAlign: settings.cardDescAlignHoriz as any,
-      justifyContent: mapAlignJustify(settings.cardDescAlignHoriz),
-      alignItems: mapAlignVertical(settings.cardDescAlignVert)
-  });
+  // Helper to map Text Align
+  const mapTextAlign = (val: string) => {
+      if (val === 'left') return 'left';
+      if (val === 'right') return 'right';
+      return 'center';
+  };
 
-  // --- EXPORT LOGIC (GHOST RENDER) ---
+  // --- EXPORT LOGIC ---
   const performExport = async () => {
       if (!ghostRef.current) return;
       setIsExporting(true);
       setExportProgress(0);
 
       try {
-          // 1. Determine pages to export
+          // 1. Determine pages
           let pagesToExport: number[] = [];
           if (exportOpts.range === 'current') pagesToExport = [currentPage];
           else if (exportOpts.range === 'all') pagesToExport = Array.from({length: totalPages}, (_, i) => i + 1);
           else {
-              // Simple parser for "1, 3-5"
               const parts = exportOpts.customRange.split(',');
               parts.forEach(p => {
+                  if (p.trim() === '') return;
                   if(p.includes('-')) {
                       const [s, e] = p.split('-').map(Number);
-                      for(let i=s; i<=e; i++) if(i>0 && i<=totalPages) pagesToExport.push(i);
+                      if (!isNaN(s) && !isNaN(e)) {
+                        for(let i=s; i<=e; i++) if(i>0 && i<=totalPages) pagesToExport.push(i);
+                      }
                   } else {
                       const n = Number(p);
                       if(n>0 && n<=totalPages) pagesToExport.push(n);
@@ -129,35 +115,81 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
           }
           
           pagesToExport = [...new Set(pagesToExport)].sort((a,b) => a-b);
-          if(pagesToExport.length === 0) throw new Error("Nenhuma página selecionada.");
+          if(pagesToExport.length === 0) {
+             pagesToExport = [currentPage]; // Fallback
+          }
 
+          // 2. Fetch Data
           let allProducts = products;
           if (pagesToExport.length > 1 || (pagesToExport[0] !== currentPage)) {
               allProducts = await fetchAllProducts();
           }
 
           const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
           
           for (let i = 0; i < pagesToExport.length; i++) {
               const pNum = pagesToExport[i];
               setExportProgress(Math.round(((i) / pagesToExport.length) * 100));
 
+              // Update Ghost Data
               const start = (pNum - 1) * itemsPerPage;
               const end = start + itemsPerPage;
               const pageProducts = allProducts.slice(start, end);
-
               setGhostPageData({ products: pageProducts, pageNum: pNum });
-              await new Promise(r => setTimeout(r, 200)); // Wait for React Render
-
-              const element = ghostRef.current.querySelector('.a4-page') as HTMLElement;
               
+              // Wait for React to Render Ghost
+              await new Promise(r => setTimeout(r, 500)); 
+              
+              const element = ghostRef.current.querySelector('.a4-page') as HTMLElement;
+              if(!element) throw new Error("Erro ao renderizar página.");
+
+              // Ensure images loaded
+              const imgs = Array.from(element.querySelectorAll('img'));
+              await Promise.all(imgs.map(img => {
+                  if(img.complete) return Promise.resolve();
+                  return new Promise(res => { img.onload=res; img.onerror=res; });
+              }));
+
+              // Capture with High Res Settings & Export Optimizations
               const canvas = await html2canvas(element, {
-                  scale: exportOpts.quality === 1 ? 3 : 2,
+                  scale: 4, // High DPI
                   useCORS: true,
-                  logging: false,
                   allowTaint: true,
-                  width: element.offsetWidth, // Enforce dimensions
-                  height: element.offsetHeight
+                  backgroundColor: '#ffffff',
+                  width: 794, // EXACT A4 Width px (96dpi)
+                  height: 1123, // EXACT A4 Height px
+                  windowWidth: 794, 
+                  windowHeight: 1123,
+                  onclone: (clonedDoc) => {
+                      const el = clonedDoc.querySelector('.a4-page') as HTMLElement;
+                      if(el) {
+                          el.style.transform = 'none';
+                          el.style.margin = '0';
+                          (el.style as any).webkitFontSmoothing = 'antialiased';
+                          
+                          // --- AGGRESSIVE EXPORT FIXES ---
+                          
+                          // 1. Remove Padding & Margin from containers to prevent overflow
+                          const textContainers = el.querySelectorAll('.product-text-container');
+                          textContainers.forEach((node: any) => {
+                              node.style.padding = '0px'; 
+                              node.style.margin = '0px';
+                          });
+
+                          // 2. Shrink Text to Fit (Prevent Cutoff/Wrap)
+                          const textSpans = el.querySelectorAll('.product-text-span');
+                          textSpans.forEach((node: any) => {
+                              const style = window.getComputedStyle(node);
+                              const currentSize = parseFloat(style.fontSize);
+                              // Reduce font size by 15% specifically for export
+                              node.style.fontSize = `${currentSize * 0.85}px`; 
+                              node.style.lineHeight = '1.0'; // Tighten line height
+                              node.style.letterSpacing = '-0.2px'; // Tighten tracking
+                          });
+                      }
+                  }
               });
 
               if (exportOpts.format === 'png') {
@@ -166,11 +198,9 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                   link.href = canvas.toDataURL('image/png');
                   link.click();
               } else {
-                  const imgData = canvas.toDataURL('image/jpeg', exportOpts.quality);
-                  const w = pdf.internal.pageSize.getWidth();
-                  const h = pdf.internal.pageSize.getHeight();
+                  const imgData = canvas.toDataURL('image/jpeg', exportOpts.quality); 
                   if (i > 0) pdf.addPage();
-                  pdf.addImage(imgData, 'JPEG', 0, 0, w, h);
+                  pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
               }
           }
 
@@ -190,74 +220,138 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
 
   const [ghostPageData, setGhostPageData] = useState<{products: Product[], pageNum: number}>({ products: [], pageNum: 1 });
 
-  // --- RENDER HELPERS ---
-  const PageContent = ({ items, pNum }: { items: Product[], pNum: number }) => {
+  // --- RENDER CONTENT COMPONENT ---
+  const PageContent = ({ items, pNum, isGhost = false }: { items: Product[], pNum: number, isGhost?: boolean }) => {
       const localEmptySlots = Math.max(0, itemsPerPage - items.length);
       
       return (
-        // Use flex-col for the main page container to ensure footer/header/grid distribute space naturally
-        <div className="a4-page text-gray-900 relative flex flex-col box-border shrink-0"
+        <div className="a4-page text-gray-900 relative flex flex-col box-border shrink-0 bg-white"
              style={{
-                width: '210mm',
-                height: '297mm',
+                // Ghost uses strict PIXELS to match html2canvas buffer
+                width: isGhost ? '794px' : '210mm',
+                height: isGhost ? '1123px' : '297mm',
                 paddingTop: `${settings.pageMarginTop}mm`,
                 paddingBottom: `${settings.pageMarginBottom}mm`,
                 paddingLeft: `${settings.pageMarginLeft}mm`,
                 paddingRight: `${settings.pageMarginRight}mm`,
              }}>
             
-            {/* Watermark */}
+            {/* Watermark Layer */}
             <div style={watermarkStyle}></div>
 
-            {/* Header - Fixed height or auto */}
-            <header className="mb-4 border-b-2 border-gray-200 pb-2 flex items-center justify-between min-h-[25mm] shrink-0 relative z-10">
+            {/* Header */}
+            <header className="mb-2 border-b-2 border-gray-200 pb-2 flex items-center justify-between min-h-[25mm] shrink-0 relative z-10 box-border">
                 {settings.headerLogoData && <img src={settings.headerLogoData} alt="Logo" className="h-[20mm] object-contain max-w-[150px]" />}
                 <div className="flex-1 px-4 font-bold" style={{ textAlign: settings.headerAlign, color: settings.headerTextColor, fontSize: `${settings.headerTextSize}px` }}>
                     {settings.headerText}
                 </div>
             </header>
 
-            {/* Grid - Use flex-1 to take remaining space automatically */}
-            <div className="grid relative z-10 flex-1 content-start"
+            {/* Grid Container */}
+            <div className="grid relative z-10 flex-1 content-start w-full box-border"
                 style={{
                     gridTemplateColumns: `repeat(${settings.gridCols}, 1fr)`,
                     gridTemplateRows: `repeat(${settings.gridRows}, 1fr)`,
                     gap: `${settings.gridGap}mm`,
-                    minHeight: 0, // Important for nested flex scrolling issues, though not scrolling here
                 }}>
                 
                 {items.map(product => (
-                    <div key={product.id} className="flex flex-col overflow-hidden relative z-10 h-full" style={getCardStyle()}>
-                        <div className="flex-1 p-2 flex items-center justify-center overflow-hidden relative">
+                    <div key={product.id} className="relative z-10 h-full bg-white" style={getCardStyle()}>
+                        {/* Image Area (Flex Grow) */}
+                        <div className="flex-1 p-1 flex items-center justify-center overflow-hidden relative min-h-0 box-border">
                             {product.imageUrl ? (
-                                <img src={product.imageUrl} className="max-w-full max-h-full object-contain relative z-10" />
+                                <img src={product.imageUrl} className="max-w-full max-h-full object-contain" alt="" />
                             ) : (
-                                <span className="text-gray-300 text-xs text-center">Sem Imagem</span>
+                                <span className="text-gray-300 text-[10px] text-center">Sem Imagem</span>
                             )}
                         </div>
                         
-                        <div className="flex min-h-[45px] items-stretch border-t overflow-hidden" style={{ borderColor: settings.cardBorderColor }}>
+                        {/* Info Area */}
+                        <div className="flex min-h-[45px] border-t shrink-0 box-border w-full" style={{ borderColor: settings.cardBorderColor }}>
+                            
+                            {/* ID Field */}
                             {settings.showProductId && (
-                                <div className="flex px-2 font-bold shrink-0 w-full" style={{ ...getIdStyle(), width: '30%' }}>
-                                    {product.id}
+                                <div 
+                                    className="product-text-container"
+                                    style={{
+                                        backgroundColor: settings.cardIdBg,
+                                        width: '30%', 
+                                        flexBasis: '30%',
+                                        flexShrink: 0,
+                                        borderRight: `1px solid ${settings.cardBorderColor}`,
+                                        overflow: 'hidden',
+                                        boxSizing: 'border-box',
+                                        // Flex Column for Vertical Alignment
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: mapJustifyContent(settings.cardIdAlignVert),
+                                        padding: '0 2px', // Minimal padding
+                                    }}
+                                >
+                                    <span 
+                                        className="product-text-span"
+                                        style={{
+                                            color: settings.cardIdTextColor,
+                                            fontSize: `${settings.cardIdFontSize}px`,
+                                            textAlign: mapTextAlign(settings.cardIdAlignHoriz) as any,
+                                            width: '100%',
+                                            display: 'block',
+                                            lineHeight: '1.1',
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word'
+                                        }}
+                                    >
+                                        {product.id}
+                                    </span>
                                 </div>
                             )}
-                            <div className="flex p-2 leading-tight shrink-0 w-full" style={{ ...getDescStyle(), width: settings.showProductId ? '70%' : '100%' }}>
-                                <span className="line-clamp-3 w-full">{product.description}</span>
+
+                            {/* Description Field */}
+                            <div 
+                                className="product-text-container"
+                                style={{ 
+                                    backgroundColor: settings.cardDescBg,
+                                    width: settings.showProductId ? '70%' : '100%',
+                                    flexBasis: settings.showProductId ? '70%' : '100%',
+                                    flexShrink: 0,
+                                    overflow: 'hidden',
+                                    boxSizing: 'border-box',
+                                    // Flex Column for Vertical Alignment
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: mapJustifyContent(settings.cardDescAlignVert),
+                                    padding: '0 2px', // Minimal padding
+                                }}
+                            >
+                                <span 
+                                    className="product-text-span"
+                                    style={{
+                                        color: settings.cardDescTextColor,
+                                        fontSize: `${settings.cardDescFontSize}px`,
+                                        textAlign: mapTextAlign(settings.cardDescAlignHoriz) as any,
+                                        width: '100%',
+                                        display: 'block',
+                                        lineHeight: '1.1',
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word'
+                                    }}
+                                >
+                                    {product.description}
+                                </span>
                             </div>
                         </div>
                     </div>
                 ))}
 
                 {Array.from({ length: localEmptySlots }).map((_, i) => (
-                    <div key={`empty-${i}`} className="border border-dashed border-gray-200 rounded opacity-30"></div>
+                    <div key={`empty-${i}`} className="border border-dashed border-gray-200 rounded opacity-30 box-border"></div>
                 ))}
             </div>
 
-            {/* Footer - Background Removed to show Watermark */}
-            <footer className="h-[15mm] border-t border-gray-200 flex items-center justify-between text-xs text-gray-500 z-20 shrink-0 mt-4 bg-transparent">
+            {/* Footer - Transparent Background to show Watermark */}
+            <footer className="h-[15mm] border-t border-gray-200 flex items-center justify-between text-xs text-gray-500 z-20 shrink-0 mt-2 bg-transparent relative box-border">
                 <span className="font-bold">{settings.showPageNumbers ? `Página ${pNum}` : ''}</span>
-                <span style={{ textAlign: settings.footerAlign }} className="flex-1 px-4 italic">
+                <span style={{ textAlign: settings.footerAlign, width: '100%' }} className="px-4 italic">
                     {settings.footerText}
                 </span>
             </footer>
@@ -266,16 +360,16 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-200 dark:bg-dark-bg relative overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-200 dark:bg-[#121212] relative overflow-hidden">
       
-      {/* Ghost Render Container */}
-      <div className="absolute top-0 left-0 pointer-events-none opacity-0 overflow-hidden" style={{ width: '210mm', height: '297mm', zIndex: -100 }} ref={ghostRef}>
-          <PageContent items={ghostPageData.products} pNum={ghostPageData.pageNum} />
+      {/* Ghost Render Container (Hidden Offscreen) */}
+      <div style={{ position: 'absolute', top: 0, left: '-10000px', overflow: 'visible' }} ref={ghostRef}>
+          <PageContent items={ghostPageData.products} pNum={ghostPageData.pageNum} isGhost={true} />
       </div>
 
       {/* Toolbar */}
       {!cleanMode && (
-        <div className="flex items-center justify-between p-3 bg-white dark:bg-dark-card border-b shadow-sm z-30 shrink-0">
+        <div className="flex items-center justify-between p-3 bg-white dark:bg-dark-card border-b shadow-sm z-30 shrink-0 border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3">
                 <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded p-1">
                     <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-30 dark:text-white"><ChevronLeft size={20}/></button>
@@ -307,9 +401,8 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
       {/* Export Modal */}
       {showExportModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl w-full max-w-md p-6 text-gray-800 dark:text-gray-100">
+              <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl w-full max-w-md p-6 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700">
                   <h3 className="text-lg font-bold mb-4">Exportar Catálogo</h3>
-                  
                   <div className="space-y-4">
                       <div>
                           <label className="block text-sm font-medium mb-1">Páginas</label>
@@ -322,7 +415,7 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                                   <input 
                                     type="text" 
                                     placeholder="Ex: 1-3, 5" 
-                                    className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600" 
+                                    className="border rounded p-1 text-sm w-32 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
                                     value={exportOpts.customRange} 
                                     onChange={e => setExportOpts(p => ({...p, customRange: e.target.value, range: 'custom'}))}
                                     disabled={exportOpts.range !== 'custom'}
@@ -330,35 +423,30 @@ const CatalogPreview: React.FC<CatalogPreviewProps> = ({ products, settings, tot
                               </label>
                           </div>
                       </div>
-
                       <div>
                           <label className="block text-sm font-medium mb-1">Formato</label>
-                          <select className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" value={exportOpts.format} onChange={(e) => setExportOpts(p => ({...p, format: e.target.value as any}))}>
+                          <select className="w-full border rounded p-2 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" value={exportOpts.format} onChange={(e) => setExportOpts(p => ({...p, format: e.target.value as any}))}>
                               <option value="pdf">PDF (Arquivo Único)</option>
                               <option value="png">PNG (Imagens Separadas)</option>
                           </select>
                       </div>
-
                       <div>
                           <label className="block text-sm font-medium mb-1">Qualidade / Compressão ({Math.round(exportOpts.quality * 100)}%)</label>
-                          <input type="range" min="0.5" max="1" step="0.1" value={exportOpts.quality} onChange={(e) => setExportOpts(p => ({...p, quality: Number(e.target.value)}))} className="w-full" />
+                          <input 
+                            type="range" 
+                            min="0.1" max="1" step="0.1" 
+                            value={exportOpts.quality} 
+                            onChange={(e) => setExportOpts(p => ({...p, quality: Number(e.target.value)}))}
+                            className="w-full"
+                          />
                           <p className="text-xs text-gray-500 dark:text-gray-400">Menor qualidade = Arquivo menor.</p>
                       </div>
                   </div>
-
-                  {isExporting && (
-                      <div className="mt-4">
-                          <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded overflow-hidden">
-                              <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${exportProgress}%` }}></div>
-                          </div>
-                          <p className="text-center text-xs mt-1">Processando página...</p>
-                      </div>
-                  )}
-
-                  <div className="flex justify-end gap-3 mt-6">
-                      <button onClick={() => setShowExportModal(false)} disabled={isExporting} className="px-4 py-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Cancelar</button>
-                      <button onClick={performExport} disabled={isExporting} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2">
-                          {isExporting ? <span className="animate-spin">⏳</span> : <Check size={16} />} Iniciar Exportação
+                  <div className="mt-6 flex justify-end gap-3">
+                      <button onClick={() => setShowExportModal(false)} className="px-4 py-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600">Cancelar</button>
+                      <button onClick={performExport} disabled={isExporting} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2 disabled:opacity-70">
+                          {isExporting ? <Check className="animate-spin" size={16}/> : <Download size={16}/>}
+                          {isExporting ? `Exportando ${exportProgress}%` : 'Iniciar Exportação'}
                       </button>
                   </div>
               </div>

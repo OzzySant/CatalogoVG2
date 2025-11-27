@@ -46,12 +46,21 @@ export const getImageUrl = (imageName?: string) => {
   return `${UPLOADS_URL}/${imageName}`;
 };
 
-export const fetchProducts = async (page = 1, limit = 15, search = '', category = ''): Promise<ProductsResponse> => {
+export const fetchProducts = async (
+  page = 1, 
+  limit = 15, 
+  search = '', 
+  category = '',
+  orderBy = 'createdAt',
+  orderDir = 'DESC'
+): Promise<ProductsResponse> => {
   const params = new URLSearchParams({
     page: page.toString(),
     limit: limit.toString(),
     search,
     category: category === 'all' ? '' : category,
+    orderBy,
+    orderDir
   });
 
   const mockResponse: ProductsResponse = {
